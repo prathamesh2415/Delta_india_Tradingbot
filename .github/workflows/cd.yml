@@ -29,20 +29,3 @@ jobs:
           script: |
             powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\TradingBot\deploy\cd-deploy.ps1"
 
-      - name: Deploy to Linux EC2
-        if: ${{ secrets.EC2_OS == 'linux' }}
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
-          port: ${{ secrets.EC2_SSH_PORT || 22 }}
-          script_stop: true
-          script: |
-            set -e
-            cd /home/ubuntu/trading-bot
-            git pull
-            ./venv/bin/pip install -r requirements-prod.txt -q
-            ./venv/bin/python check_setup.py || true
-            sudo systemctl restart trading-bot
-            sudo systemctl restart trading-dashboard || true
