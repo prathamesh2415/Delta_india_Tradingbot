@@ -23,6 +23,8 @@ class DashboardSummary:
     fee_to_gross_ratio_percent: float
     avg_fee_per_trade_usd: float
     avg_net_per_trade_usd: float
+    total_trading_fees_usd: float
+    total_gst_usd: float
     paper_trading: bool
 
 
@@ -60,5 +62,7 @@ class DashboardAnalytics:
                 total_fees / closed if closed > 0 else 0.0
             ),
             avg_net_per_trade_usd=(net / closed if closed > 0 else 0.0),
+            total_trading_fees_usd=float(stats["total_trading_fees"]),
+            total_gst_usd=float(stats["total_gst"]),
             paper_trading=paper_trading,
         )

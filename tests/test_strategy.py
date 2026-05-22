@@ -16,7 +16,8 @@ def test_compute_ema(trending_ohlcv: pd.DataFrame) -> None:
 def test_buy_signal_update_bar() -> None:
     strategy = EmaBreakoutStrategy(ema_length=5, target_rr=2.0)
     strategy.update_bar(0, 96.0, 94.0, 95.0, 100.0)
-    setup = strategy.update_bar(1, 98.0, 94.5, 97.0, 100.0)
+    # Bar 1 must not re-qualify as a new buy signal (close/high below EMA)
+    setup = strategy.update_bar(1, 98.0, 94.5, 100.5, 100.0)
     assert setup is not None
     assert setup.side == "long"
     assert setup.entry == 96.0
@@ -27,7 +28,7 @@ def test_buy_signal_update_bar() -> None:
 def test_sell_signal_update_bar() -> None:
     strategy = EmaBreakoutStrategy()
     strategy.update_bar(0, 106.0, 105.0, 105.5, 100.0)
-    setup = strategy.update_bar(1, 105.5, 104.0, 104.5, 100.0)
+    setup = strategy.update_bar(1, 105.5, 104.0, 99.0, 100.0)
     assert setup is not None
     assert setup.side == "short"
     assert setup.entry == 105.0
@@ -44,7 +45,7 @@ def test_no_signal_when_risk_zero() -> None:
 def test_block_zone_prevents_entry() -> None:
     strategy = EmaBreakoutStrategy()
     strategy.update_bar(0, 96.0, 94.0, 95.0, 100.0)
-    setup = strategy.update_bar(1, 98.0, 94.5, 97.0, 100.0, in_block_zone=True)
+    setup = strategy.update_bar(1, 98.0, 94.5, 100.5, 100.0, in_block_zone=True)
     assert setup is None
 
 

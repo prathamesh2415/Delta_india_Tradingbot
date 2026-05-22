@@ -58,8 +58,17 @@ class TradingBot:
             settings.telegram_bot_token,
             settings.telegram_chat_id,
         )
-        self.pnl_tracker = PnLTracker(self.repository, self.exchange)
-        self.fee_calculator = FeeCalculator(settings.taker_fee_percent)
+        size_unit = "contracts" if settings.size_unit == "contracts" else "btc"
+        self.fee_calculator = FeeCalculator(
+            taker_fee_percent=settings.taker_fee_percent,
+            maker_fee_percent=settings.maker_fee_percent,
+            gst_percent=settings.gst_percent,
+            contract_size_btc=settings.contract_size_btc,
+            size_unit=size_unit,
+        )
+        self.pnl_tracker = PnLTracker(
+            self.repository, self.exchange, self.fee_calculator
+        )
         self._last_bar_ts: int | None = None
         self._active_trade_id: int | None = None
         self._account_equity_usd = initial_equity
@@ -121,10 +130,12 @@ class TradingBot:
             setup.take_profit,
         )
         order_id = str(order.get("id", ""))
-        entry_fee = self.fee_calculator.entry_fee(setup.entry, size_result.contracts)
+        entry_leg = self.fee_calculator.entry_fee(
+            setup.entry, size_result.contracts, order_role="taker"
+        )
         api_fee = self.fee_calculator.fee_from_order(order)
         if api_fee is not None:
-            entry_fee = api_fee
+            entry_leg = self.fee_calculator.apply_api_fee_to_leg(entry_leg, api_fee)
         trade_id = self.repository.insert_trade(
             symbol=self.settings.trading_symbol,
             side=setup.side,
@@ -134,7 +145,10 @@ class TradingBot:
             size=size_result.contracts,
             order_id=order_id,
             notes=f"signal_bar={setup.signal_index}",
-            entry_fee_usd=entry_fee,
+            entry_fee_usd=entry_leg.total_fee_usd,
+            entry_trading_fee_usd=entry_leg.trading_fee_usd,
+            entry_gst_usd=entry_leg.gst_usd,
+            entry_notional_usd=entry_leg.notional_usd,
         )
         self._active_trade_id = trade_id
         self.telegram.trade_opened(
@@ -202,34 +216,46 @@ class TradingBot:
         if not closed:
             return
 
-        if trade.side == "long":
-            pnl = (exit_price - trade.entry_price) * trade.size
-        else:
-            pnl = (trade.entry_price - exit_price) * trade.size
+        pnl = self.fee_calculator.gross_pnl_usd(
+            trade.side, trade.entry_price, exit_price, trade.size
+        )
+        exit_leg = self.fee_calculator.exit_fee(
+            exit_price, trade.size, order_role="taker"
+        )
+        total_fee = (trade.entry_fee_usd or 0) + exit_leg.total_fee_usd
+        total_gst = (trade.entry_gst_usd or 0) + exit_leg.gst_usd
+        net_pnl = pnl - total_fee
 
         self.exchange.close_position(self.settings.trading_symbol)
-        exit_fee = self.fee_calculator.exit_fee(exit_price, trade.size)
-        total_fee = (trade.entry_fee_usd or 0) + exit_fee
-        net_pnl = pnl - total_fee
         close_status = cast(Literal["closed", "stopped", "taken"], status)
         self.repository.close_trade(
-            trade.id, exit_price, pnl, close_status, exit_fee_usd=exit_fee
+            trade.id,
+            exit_price,
+            pnl,
+            close_status,
+            exit_fee_usd=exit_leg.total_fee_usd,
+            exit_trading_fee_usd=exit_leg.trading_fee_usd,
+            exit_gst_usd=exit_leg.gst_usd,
+            exit_notional_usd=exit_leg.notional_usd,
         )
         self.risk_manager.record_trade_result(net_pnl)
         self._active_trade_id = None
         self.telegram.send(
             f"<b>Trade Closed</b>\n"
             f"{self.settings.trading_symbol}\n"
-            f"Gross P&L: ${pnl:.2f}\n"
-            f"Fees: ${total_fee:.4f}\n"
-            f"<b>Net P&L: ${net_pnl:.2f}</b>\n"
+            f"Gross P&L: ${pnl:.4f}\n"
+            f"Trading fees: ${total_fee - total_gst:.4f}\n"
+            f"GST (18%): ${total_gst:.4f}\n"
+            f"Total charges: ${total_fee:.4f}\n"
+            f"<b>Net P&L: ${net_pnl:.4f}</b>\n"
             f"Reason: {reason}"
         )
         logger.info(
-            "Closed trade id=%s gross=%.2f fees=%.4f net=%.2f reason=%s",
+            "Closed id=%s gross=%.4f fees=%.4f (gst=%.4f) net=%.4f %s",
             trade.id,
             pnl,
             total_fee,
+            total_gst,
             net_pnl,
             reason,
         )

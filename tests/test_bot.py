@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -41,6 +42,10 @@ def _settings(tmp_path) -> Settings:
         server_port=8000,
         dashboard_password=None,
         taker_fee_percent=0.05,
+        maker_fee_percent=0.02,
+        gst_percent=18.0,
+        contract_size_btc=0.001,
+        size_unit="btc",
     )
 
 
@@ -89,3 +94,38 @@ def test_run_once_blocked_by_position(mock_session, mock_equity, tmp_path) -> No
     bot.exchange.fetch_ticker_price = MagicMock(return_value=100.0)  # type: ignore[method-assign]
     bot.run_once()
     assert len(bot.repository.get_open_trades()) == 1
+
+
+@patch(
+    "trading_bot.exchange.delta_client.DeltaExchangeClient.fetch_account_equity",
+    return_value=100.0,
+)
+def test_poll_interval_mapping(mock_equity, tmp_path) -> None:
+    settings = _settings(tmp_path)
+    bot = TradingBot(settings)
+    assert bot._poll_interval_sec() == 90
+    bot_5m = TradingBot(replace(settings, timeframe="5m"))
+    assert bot_5m._poll_interval_sec() == 60
+
+
+@patch(
+    "trading_bot.exchange.delta_client.DeltaExchangeClient.fetch_account_equity",
+    return_value=100.0,
+)
+@patch(
+    "trading_bot.exchange.delta_client.DeltaExchangeClient.fetch_ticker_price",
+    return_value=103.0,
+)
+@patch(
+    "trading_bot.exchange.delta_client.DeltaExchangeClient.close_position",
+    return_value={"paper": True},
+)
+def test_check_exit_long_take_profit(
+    mock_close, mock_price, mock_equity, tmp_path
+) -> None:
+    bot = TradingBot(_settings(tmp_path))
+    tid = bot.repository.insert_trade("BTCUSD", "long", 100.0, 99.0, 102.0, 0.001)
+    bot._active_trade_id = tid
+    bot._check_exit()
+    assert bot.repository.get_open_trades() == []
+    assert bot._active_trade_id is None

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from trading_bot.db.repository import TradeRepository
 from trading_bot.exchange.delta_client import DeltaExchangeClient
+from trading_bot.fees.calculator import FeeCalculator
 
 logger = logging.getLogger(__name__)
 
@@ -28,9 +29,11 @@ class PnLTracker:
         self,
         repository: TradeRepository,
         exchange: DeltaExchangeClient,
+        fee_calculator: FeeCalculator | None = None,
     ) -> None:
         self.repository = repository
         self.exchange = exchange
+        self.fee_calculator = fee_calculator or FeeCalculator()
 
     def snapshot(
         self,
@@ -50,10 +53,9 @@ class PnLTracker:
         try:
             price = self.exchange.fetch_ticker_price(symbol)
             for trade in open_trades:
-                if trade.side == "long":
-                    unrealized += (price - trade.entry_price) * trade.size
-                else:
-                    unrealized += (trade.entry_price - price) * trade.size
+                unrealized += self.fee_calculator.gross_pnl_usd(
+                    trade.side, trade.entry_price, price, trade.size
+                )
         except Exception as exc:
             logger.warning("Could not compute unrealized P&L: %s", exc)
 

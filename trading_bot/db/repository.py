@@ -27,6 +27,12 @@ class TradeRecord:
     exit_fee_usd: float
     total_fee_usd: float
     net_pnl_usd: float | None
+    entry_trading_fee_usd: float
+    entry_gst_usd: float
+    exit_trading_fee_usd: float
+    exit_gst_usd: float
+    entry_notional_usd: float
+    exit_notional_usd: float
     opened_at: str
     closed_at: str | None
     notes: str | None
@@ -60,6 +66,12 @@ class TradeRepository:
             ("exit_fee_usd", "REAL NOT NULL DEFAULT 0"),
             ("total_fee_usd", "REAL NOT NULL DEFAULT 0"),
             ("net_pnl_usd", "REAL"),
+            ("entry_trading_fee_usd", "REAL NOT NULL DEFAULT 0"),
+            ("entry_gst_usd", "REAL NOT NULL DEFAULT 0"),
+            ("exit_trading_fee_usd", "REAL NOT NULL DEFAULT 0"),
+            ("exit_gst_usd", "REAL NOT NULL DEFAULT 0"),
+            ("entry_notional_usd", "REAL NOT NULL DEFAULT 0"),
+            ("exit_notional_usd", "REAL NOT NULL DEFAULT 0"),
         ]
         for name, typedef in migrations:
             if name not in cols:
@@ -115,6 +127,9 @@ class TradeRepository:
         order_id: str | None = None,
         notes: str | None = None,
         entry_fee_usd: float = 0.0,
+        entry_trading_fee_usd: float = 0.0,
+        entry_gst_usd: float = 0.0,
+        entry_notional_usd: float = 0.0,
     ) -> int:
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
@@ -123,8 +138,10 @@ class TradeRepository:
                 INSERT INTO trades (
                     symbol, side, entry_price, stop_loss, take_profit,
                     size, status, order_id, opened_at, notes,
-                    entry_fee_usd, exit_fee_usd, total_fee_usd
-                ) VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, 0, ?)
+                    entry_fee_usd, exit_fee_usd, total_fee_usd,
+                    entry_trading_fee_usd, entry_gst_usd,
+                    entry_notional_usd
+                ) VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, 0, ?, ?, ?, ?)
                 """,
                 (
                     symbol,
@@ -138,6 +155,9 @@ class TradeRepository:
                     notes,
                     entry_fee_usd,
                     entry_fee_usd,
+                    entry_trading_fee_usd,
+                    entry_gst_usd,
+                    entry_notional_usd,
                 ),
             )
             return int(cur.lastrowid)
@@ -149,6 +169,9 @@ class TradeRepository:
         pnl_usd: float,
         status: Literal["closed", "stopped", "taken"] = "closed",
         exit_fee_usd: float = 0.0,
+        exit_trading_fee_usd: float = 0.0,
+        exit_gst_usd: float = 0.0,
+        exit_notional_usd: float = 0.0,
     ) -> None:
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
@@ -163,7 +186,8 @@ class TradeRepository:
                 """
                 UPDATE trades
                 SET status = ?, exit_price = ?, pnl_usd = ?, closed_at = ?,
-                    exit_fee_usd = ?, total_fee_usd = ?, net_pnl_usd = ?
+                    exit_fee_usd = ?, total_fee_usd = ?, net_pnl_usd = ?,
+                    exit_trading_fee_usd = ?, exit_gst_usd = ?, exit_notional_usd = ?
                 WHERE id = ?
                 """,
                 (
@@ -174,6 +198,9 @@ class TradeRepository:
                     exit_fee_usd,
                     total_fee,
                     net_pnl,
+                    exit_trading_fee_usd,
+                    exit_gst_usd,
+                    exit_notional_usd,
                     trade_id,
                 ),
             )
@@ -202,7 +229,10 @@ class TradeRepository:
                 """
                 SELECT id, symbol, side, entry_price, exit_price, size, status,
                        pnl_usd, entry_fee_usd, exit_fee_usd, total_fee_usd,
-                       net_pnl_usd, opened_at, closed_at
+                       net_pnl_usd, entry_trading_fee_usd, entry_gst_usd,
+                       exit_trading_fee_usd, exit_gst_usd,
+                       entry_notional_usd, exit_notional_usd,
+                       opened_at, closed_at
                 FROM trades
                 ORDER BY id DESC
                 LIMIT ?
@@ -216,6 +246,10 @@ class TradeRepository:
             net = r["net_pnl_usd"]
             if net is None and r["pnl_usd"] is not None:
                 net = gross - fees
+            entry_tf = float(r["entry_trading_fee_usd"] or 0)
+            entry_gst = float(r["entry_gst_usd"] or 0)
+            exit_tf = float(r["exit_trading_fee_usd"] or 0)
+            exit_gst = float(r["exit_gst_usd"] or 0)
             result.append(
                 {
                     "id": r["id"],
@@ -225,9 +259,17 @@ class TradeRepository:
                     "exit_price": r["exit_price"],
                     "size": r["size"],
                     "status": r["status"],
+                    "entry_notional_usd": round(float(r["entry_notional_usd"] or 0), 2),
+                    "exit_notional_usd": round(float(r["exit_notional_usd"] or 0), 2),
                     "gross_pnl_usd": round(gross, 4),
+                    "entry_trading_fee_usd": round(entry_tf, 4),
+                    "entry_gst_usd": round(entry_gst, 4),
+                    "exit_trading_fee_usd": round(exit_tf, 4),
+                    "exit_gst_usd": round(exit_gst, 4),
                     "entry_fee_usd": round(float(r["entry_fee_usd"] or 0), 4),
                     "exit_fee_usd": round(float(r["exit_fee_usd"] or 0), 4),
+                    "total_trading_fee_usd": round(entry_tf + exit_tf, 4),
+                    "total_gst_usd": round(entry_gst + exit_gst, 4),
                     "total_fee_usd": round(fees, 4),
                     "net_pnl_usd": round(float(net or 0), 4),
                     "beats_fees": float(net or 0) > 0,
@@ -248,6 +290,8 @@ class TradeRepository:
                     COALESCE(SUM(CASE WHEN pnl_usd > 0 THEN pnl_usd ELSE 0 END), 0) AS gross_profit,
                     COALESCE(SUM(CASE WHEN pnl_usd < 0 THEN pnl_usd ELSE 0 END), 0) AS gross_loss,
                     COALESCE(SUM(total_fee_usd), 0) AS total_fees,
+                    COALESCE(SUM(entry_trading_fee_usd + exit_trading_fee_usd), 0) AS total_trading_fees,
+                    COALESCE(SUM(entry_gst_usd + exit_gst_usd), 0) AS total_gst,
                     COALESCE(SUM(
                         COALESCE(net_pnl_usd, pnl_usd - total_fee_usd, 0)
                     ), 0) AS net_profit,
@@ -265,6 +309,8 @@ class TradeRepository:
             "gross_profit": float(row["gross_profit"] or 0),
             "gross_loss": float(row["gross_loss"] or 0),
             "total_fees": float(row["total_fees"] or 0),
+            "total_trading_fees": float(row["total_trading_fees"] or 0),
+            "total_gst": float(row["total_gst"] or 0),
             "net_profit": float(row["net_profit"] or 0),
             "winning_trades": int(row["winning_trades"] or 0),
             "losing_trades": int(row["losing_trades"] or 0),
@@ -335,6 +381,12 @@ class TradeRepository:
             exit_fee_usd=float(row["exit_fee_usd"] or 0),
             total_fee_usd=float(row["total_fee_usd"] or 0),
             net_pnl_usd=row["net_pnl_usd"],
+            entry_trading_fee_usd=float(row["entry_trading_fee_usd"] or 0),
+            entry_gst_usd=float(row["entry_gst_usd"] or 0),
+            exit_trading_fee_usd=float(row["exit_trading_fee_usd"] or 0),
+            exit_gst_usd=float(row["exit_gst_usd"] or 0),
+            entry_notional_usd=float(row["entry_notional_usd"] or 0),
+            exit_notional_usd=float(row["exit_notional_usd"] or 0),
             opened_at=row["opened_at"],
             closed_at=row["closed_at"],
             notes=row["notes"],
@@ -349,6 +401,8 @@ def _empty_stats() -> dict[str, float | int]:
         "gross_profit": 0.0,
         "gross_loss": 0.0,
         "total_fees": 0.0,
+        "total_trading_fees": 0.0,
+        "total_gst": 0.0,
         "net_profit": 0.0,
         "winning_trades": 0,
         "losing_trades": 0,

@@ -75,6 +75,10 @@ class Settings:
     server_port: int
     dashboard_password: str | None
     taker_fee_percent: float
+    maker_fee_percent: float
+    gst_percent: float
+    contract_size_btc: float
+    size_unit: str
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -114,6 +118,10 @@ class Settings:
             server_port=_env_int("SERVER_PORT", 8000),
             dashboard_password=_env("DASHBOARD_PASSWORD") or _env("WEBHOOK_SECRET"),
             taker_fee_percent=_env_float("TAKER_FEE_PERCENT", 0.05),
+            maker_fee_percent=_env_float("MAKER_FEE_PERCENT", 0.02),
+            gst_percent=_env_float("GST_PERCENT", 18.0),
+            contract_size_btc=_env_float("CONTRACT_SIZE_BTC", 0.001),
+            size_unit=(_env("SIZE_UNIT", "btc") or "btc").lower(),
         )
 
     def ensure_paths(self) -> None:

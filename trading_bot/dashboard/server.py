@@ -66,6 +66,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "avg_net_per_trade_usd": round(s.avg_net_per_trade_usd, 4),
             "paper_trading": s.paper_trading,
             "taker_fee_percent": settings.taker_fee_percent,
+            "maker_fee_percent": settings.maker_fee_percent,
+            "gst_percent": settings.gst_percent,
+            "total_trading_fees_usd": round(s.total_trading_fees_usd, 4),
+            "total_gst_usd": round(s.total_gst_usd, 4),
+            "fee_formula": (
+                "Notional = Spot × BTC qty; "
+                "Fee = Notional × taker/maker %; "
+                "GST = 18% on fee (Delta India)"
+            ),
         }
 
     @app.get("/api/trades")

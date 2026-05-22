@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+from unittest.mock import patch
+
 from fastapi.testclient import TestClient
 
 from trading_bot.config import Settings
@@ -40,18 +43,61 @@ def _settings(tmp_path) -> Settings:
         server_port=8000,
         dashboard_password=None,
         taker_fee_percent=0.05,
+        maker_fee_percent=0.02,
+        gst_percent=18.0,
+        contract_size_btc=0.001,
+        size_unit="btc",
     )
 
 
 def test_dashboard_summary(tmp_path) -> None:
     settings = _settings(tmp_path)
     repo = TradeRepository(settings.database_path)
-    tid = repo.insert_trade("BTCUSD", "long", 100, 99, 102, 0.01, entry_fee_usd=0.05)
-    repo.close_trade(tid, 102.0, 0.02, exit_fee_usd=0.05)
+    tid = repo.insert_trade(
+        "BTCUSD", "long", 100, 99, 102, 0.01,
+        entry_fee_usd=0.059, entry_trading_fee_usd=0.05, entry_gst_usd=0.009,
+        entry_notional_usd=1.0,
+    )
+    repo.close_trade(
+        tid, 102.0, 0.02, exit_fee_usd=0.059,
+        exit_trading_fee_usd=0.05, exit_gst_usd=0.009, exit_notional_usd=1.02,
+    )
 
-    client = TestClient(create_app(settings))
-    r = client.get("/api/summary")
+    with patch(
+        "trading_bot.dashboard.server.DeltaExchangeClient.fetch_account_equity",
+        return_value=100.0,
+    ):
+        client = TestClient(create_app(settings))
+        r = client.get("/api/summary")
     assert r.status_code == 200
     data = r.json()
-    assert data["total_fees_usd"] == 0.1
+    assert data["total_fees_usd"] == 0.12
+    assert data["live_balance_usd"] == 100.0
     assert "net_profit_usd" in data
+
+
+def test_dashboard_trades_and_equity_history(tmp_path) -> None:
+    settings = _settings(tmp_path)
+    repo = TradeRepository(settings.database_path)
+    repo.insert_trade("BTCUSD", "long", 100, 99, 102, 0.01)
+    repo.record_pnl_snapshot(100.0, 0.0, 1.0)
+
+    with patch(
+        "trading_bot.dashboard.server.DeltaExchangeClient.fetch_account_equity",
+        return_value=100.0,
+    ):
+        client = TestClient(create_app(settings))
+        trades = client.get("/api/trades")
+        history = client.get("/api/equity-history")
+
+    assert trades.status_code == 200
+    assert len(trades.json()["trades"]) == 1
+    assert history.status_code == 200
+    assert len(history.json()["snapshots"]) == 1
+
+
+def test_dashboard_password_required(tmp_path) -> None:
+    settings = replace(_settings(tmp_path), dashboard_password="secret")
+    client = TestClient(create_app(settings))
+    assert client.get("/api/summary").status_code == 401
+    assert client.get("/api/summary", params={"password": "secret"}).status_code == 200

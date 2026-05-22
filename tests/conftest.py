@@ -36,7 +36,7 @@ def sample_ohlcv() -> pd.DataFrame:
     df.loc[10, "low"] = 94.0
     # Breakout bar
     df.loc[11, "high"] = 98.0
-    df.loc[11, "close"] = 97.0
+    df.loc[11, "close"] = 100.5
     df.loc[11, "low"] = 94.5
     return df
 

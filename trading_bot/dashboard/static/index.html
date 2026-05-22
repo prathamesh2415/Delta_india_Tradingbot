@@ -179,20 +179,29 @@
       <div class="value negative" id="grossLoss">—</div>
     </div>
     <div class="card">
-      <h2>Total fees paid</h2>
-      <div class="value neutral" id="totalFees">—</div>
+      <h2>Trading fees (ex-GST)</h2>
+      <div class="value neutral" id="tradingFees">—</div>
       <div class="sub" id="feeRate"></div>
     </div>
     <div class="card">
-      <h2>Net profit (after fees)</h2>
-      <div class="value" id="netProfit">—</div>
-      <div class="sub">Gross P&amp;L minus all charges</div>
+      <h2>GST on fees (18%)</h2>
+      <div class="value neutral" id="totalGst">—</div>
     </div>
     <div class="card">
-      <h2>Avg fee / trade</h2>
+      <h2>Total charges (fees + GST)</h2>
+      <div class="value neutral" id="totalFees">—</div>
+    </div>
+    <div class="card">
+      <h2>Net profit (after all charges)</h2>
+      <div class="value" id="netProfit">—</div>
+      <div class="sub">Gross P&amp;L − trading fees − GST</div>
+    </div>
+    <div class="card">
+      <h2>Avg charges / trade</h2>
       <div class="value neutral" id="avgFee">—</div>
     </div>
   </div>
+  <p class="refresh" id="formulaNote" style="margin-bottom:1rem"></p>
 
   <div class="card" style="margin-top:0">
     <p class="section-title">Trade history — fees per trade</p>
@@ -203,12 +212,13 @@
             <th>ID</th>
             <th>Side</th>
             <th>Status</th>
+            <th>Notional</th>
             <th>Gross P&amp;L</th>
-            <th>Entry fee</th>
-            <th>Exit fee</th>
-            <th>Total fee</th>
+            <th>Trade fee</th>
+            <th>GST</th>
+            <th>Total charge</th>
             <th>Net P&amp;L</th>
-            <th>Beats fees?</th>
+            <th>Profit &gt; charges?</th>
           </tr>
         </thead>
         <tbody id="tradesBody"></tbody>
@@ -237,11 +247,16 @@
         $("balance").textContent = fmtPlain(sum.live_balance_usd);
         $("grossProfit").textContent = fmtPlain(sum.gross_profit_usd);
         $("grossLoss").textContent = fmt(sum.gross_loss_usd);
+        $("tradingFees").textContent = fmtPlain(sum.total_trading_fees_usd || 0);
+        $("totalGst").textContent = fmtPlain(sum.total_gst_usd || 0);
         $("totalFees").textContent = fmtPlain(sum.total_fees_usd);
         $("netProfit").textContent = fmt(sum.net_profit_usd);
         $("netProfit").className = "value " + (sum.net_profit_usd >= 0 ? "positive" : "negative");
         $("avgFee").textContent = fmtPlain(sum.avg_fee_per_trade_usd);
-        $("feeRate").textContent = "Est. taker " + sum.taker_fee_percent + "% per leg (entry + exit)";
+        $("feeRate").textContent =
+          "Delta futures: taker " + sum.taker_fee_percent + "% · maker " + sum.maker_fee_percent +
+          "% of notional + GST " + sum.gst_percent + "%";
+        $("formulaNote").textContent = sum.fee_formula || "";
 
         const badge = $("modeBadge");
         badge.textContent = sum.paper_trading ? "PAPER" : "LIVE";
@@ -255,7 +270,8 @@
           $("verdictIcon").textContent = "✅";
           $("verdictText").textContent = "Net profit is positive — you are ahead after fees";
           $("verdictSub").textContent =
-            "Net " + fmt(net) + " · Fees " + fmtPlain(fees) + " · " + sum.closed_trades + " closed trades";
+            "Net " + fmt(net) + " · Charges " + fmtPlain(fees) +
+            " (fees " + fmtPlain(sum.total_trading_fees_usd) + " + GST " + fmtPlain(sum.total_gst_usd) + ")";
         } else {
           v.className = "verdict lose";
           $("verdictIcon").textContent = "⚠️";
@@ -273,13 +289,19 @@
         (trades.trades || []).forEach((t) => {
           const tr = document.createElement("tr");
           const netCls = (t.net_pnl_usd || 0) >= 0 ? "positive" : "negative";
+          const notional = t.status === 'open'
+            ? fmtPlain(t.entry_notional_usd || 0)
+            : fmtPlain((t.entry_notional_usd||0)) + ' → ' + fmtPlain(t.exit_notional_usd||0);
+          const tradeFee = (t.total_trading_fee_usd || 0);
+          const gst = (t.total_gst_usd || 0);
           tr.innerHTML = `
             <td>${t.id}</td>
             <td>${t.side}</td>
             <td>${t.status}</td>
+            <td>${notional}</td>
             <td class="${(t.gross_pnl_usd||0)>=0?'positive':'negative'}">${t.status==='open'?'—':fmt(t.gross_pnl_usd||0)}</td>
-            <td>${fmtPlain(t.entry_fee_usd)}</td>
-            <td>${t.status==='open'?'—':fmtPlain(t.exit_fee_usd)}</td>
+            <td>${fmtPlain(tradeFee)}</td>
+            <td>${fmtPlain(gst)}</td>
             <td>${fmtPlain(t.total_fee_usd)}</td>
             <td class="${netCls}">${t.status==='open'?'—':fmt(t.net_pnl_usd||0)}</td>
             <td>${t.status==='open'?'—':(t.beats_fees?'✅':'❌')}</td>
