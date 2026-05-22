@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Trading Bot — Profit vs Fees</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0c0f14;
+      --card: #151a23;
+      --border: #252d3a;
+      --text: #e8ecf1;
+      --muted: #8b95a8;
+      --green: #22c55e;
+      --red: #ef4444;
+      --amber: #f59e0b;
+      --blue: #3b82f6;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "DM Sans", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 1.5rem;
+    }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    h1 { font-size: 1.35rem; font-weight: 700; }
+    .badge {
+      font-size: 0.75rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 999px;
+      background: var(--border);
+      color: var(--muted);
+    }
+    .badge.live { background: #14532d; color: var(--green); }
+    .badge.paper { background: #422006; color: var(--amber); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.25rem;
+    }
+    .card h2 {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    .card .value {
+      font-size: 1.75rem;
+      font-weight: 700;
+    }
+    .card .sub { font-size: 0.8rem; color: var(--muted); margin-top: 0.35rem; }
+    .positive { color: var(--green); }
+    .negative { color: var(--red); }
+    .neutral { color: var(--amber); }
+    .verdict {
+      grid-column: 1 / -1;
+      padding: 1.25rem 1.5rem;
+      border-radius: 12px;
+      border: 2px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .verdict.win { border-color: var(--green); background: rgba(34,197,94,0.08); }
+    .verdict.lose { border-color: var(--red); background: rgba(239,68,68,0.08); }
+    .verdict .icon { font-size: 2rem; }
+    .verdict h3 { font-size: 1.1rem; }
+    .bar-wrap {
+      height: 8px;
+      background: var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 0.75rem;
+    }
+    .bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--red), var(--amber));
+      border-radius: 4px;
+      transition: width 0.4s ease;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.65rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+    th { color: var(--muted); font-weight: 600; font-size: 0.7rem; text-transform: uppercase; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+    .auth {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .auth input {
+      background: var(--card);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.4rem 0.75rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+    }
+    button {
+      background: var(--blue);
+      color: white;
+      border: none;
+      padding: 0.45rem 1rem;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    button:hover { filter: brightness(1.1); }
+    .refresh { color: var(--muted); font-size: 0.8rem; }
+    .section-title { font-size: 1rem; margin-bottom: 0.75rem; font-weight: 600; }
+    @media (max-width: 600px) {
+      .card .value { font-size: 1.35rem; }
+      table { font-size: 0.75rem; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Profit vs Trading Fees</h1>
+      <p class="refresh" id="lastUpdate">Loading…</p>
+    </div>
+    <div class="auth">
+      <input type="password" id="password" placeholder="Dashboard password (if set)" />
+      <button type="button" id="btnRefresh">Refresh</button>
+      <span class="badge" id="modeBadge">—</span>
+    </div>
+  </header>
+
+  <div class="verdict" id="verdict">
+    <span class="icon" id="verdictIcon">⏳</span>
+    <div>
+      <h3 id="verdictText">Calculating…</h3>
+      <p class="sub" id="verdictSub"></p>
+      <div class="bar-wrap"><div class="bar-fill" id="feeBar" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Live balance</h2>
+      <div class="value" id="balance">—</div>
+    </div>
+    <div class="card">
+      <h2>Gross profit (wins)</h2>
+      <div class="value positive" id="grossProfit">—</div>
+    </div>
+    <div class="card">
+      <h2>Gross loss</h2>
+      <div class="value negative" id="grossLoss">—</div>
+    </div>
+    <div class="card">
+      <h2>Total fees paid</h2>
+      <div class="value neutral" id="totalFees">—</div>
+      <div class="sub" id="feeRate"></div>
+    </div>
+    <div class="card">
+      <h2>Net profit (after fees)</h2>
+      <div class="value" id="netProfit">—</div>
+      <div class="sub">Gross P&amp;L minus all charges</div>
+    </div>
+    <div class="card">
+      <h2>Avg fee / trade</h2>
+      <div class="value neutral" id="avgFee">—</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:0">
+    <p class="section-title">Trade history — fees per trade</p>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Side</th>
+            <th>Status</th>
+            <th>Gross P&amp;L</th>
+            <th>Entry fee</th>
+            <th>Exit fee</th>
+            <th>Total fee</th>
+            <th>Net P&amp;L</th>
+            <th>Beats fees?</th>
+          </tr>
+        </thead>
+        <tbody id="tradesBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const fmt = (n) => (n >= 0 ? "+" : "") + "$" + Math.abs(n).toFixed(2);
+    const fmtPlain = (n) => "$" + Number(n).toFixed(2);
+
+    function query() {
+      const p = $("password").value;
+      return p ? "?password=" + encodeURIComponent(p) : "";
+    }
+
+    async function load() {
+      try {
+        const [sum, trades] = await Promise.all([
+          fetch("/api/summary" + query()).then((r) => r.json()),
+          fetch("/api/trades" + query() + (query() ? "&" : "?") + "limit=50").then((r) => r.json()),
+        ]);
+        if (sum.detail) throw new Error(sum.detail);
+
+        $("balance").textContent = fmtPlain(sum.live_balance_usd);
+        $("grossProfit").textContent = fmtPlain(sum.gross_profit_usd);
+        $("grossLoss").textContent = fmt(sum.gross_loss_usd);
+        $("totalFees").textContent = fmtPlain(sum.total_fees_usd);
+        $("netProfit").textContent = fmt(sum.net_profit_usd);
+        $("netProfit").className = "value " + (sum.net_profit_usd >= 0 ? "positive" : "negative");
+        $("avgFee").textContent = fmtPlain(sum.avg_fee_per_trade_usd);
+        $("feeRate").textContent = "Est. taker " + sum.taker_fee_percent + "% per leg (entry + exit)";
+
+        const badge = $("modeBadge");
+        badge.textContent = sum.paper_trading ? "PAPER" : "LIVE";
+        badge.className = "badge " + (sum.paper_trading ? "paper" : "live");
+
+        const v = $("verdict");
+        const net = sum.net_profit_usd;
+        const fees = sum.total_fees_usd;
+        if (sum.profitable_after_fees) {
+          v.className = "verdict win";
+          $("verdictIcon").textContent = "✅";
+          $("verdictText").textContent = "Net profit is positive — you are ahead after fees";
+          $("verdictSub").textContent =
+            "Net " + fmt(net) + " · Fees " + fmtPlain(fees) + " · " + sum.closed_trades + " closed trades";
+        } else {
+          v.className = "verdict lose";
+          $("verdictIcon").textContent = "⚠️";
+          $("verdictText").textContent = "Fees are eating your edge — net profit is negative or zero";
+          $("verdictSub").textContent =
+            "You need gross wins larger than " + fmtPlain(fees) + " in fees to be profitable";
+        }
+        const ratio = sum.gross_profit_usd > 0
+          ? Math.min(100, (fees / sum.gross_profit_usd) * 100)
+          : (fees > 0 ? 100 : 0);
+        $("feeBar").style.width = ratio + "%";
+
+        const tbody = $("tradesBody");
+        tbody.innerHTML = "";
+        (trades.trades || []).forEach((t) => {
+          const tr = document.createElement("tr");
+          const netCls = (t.net_pnl_usd || 0) >= 0 ? "positive" : "negative";
+          tr.innerHTML = `
+            <td>${t.id}</td>
+            <td>${t.side}</td>
+            <td>${t.status}</td>
+            <td class="${(t.gross_pnl_usd||0)>=0?'positive':'negative'}">${t.status==='open'?'—':fmt(t.gross_pnl_usd||0)}</td>
+            <td>${fmtPlain(t.entry_fee_usd)}</td>
+            <td>${t.status==='open'?'—':fmtPlain(t.exit_fee_usd)}</td>
+            <td>${fmtPlain(t.total_fee_usd)}</td>
+            <td class="${netCls}">${t.status==='open'?'—':fmt(t.net_pnl_usd||0)}</td>
+            <td>${t.status==='open'?'—':(t.beats_fees?'✅':'❌')}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        $("lastUpdate").textContent = "Updated " + new Date().toLocaleString();
+      } catch (e) {
+        $("verdictText").textContent = "Error loading data";
+        $("verdictSub").textContent = e.message;
+      }
+    }
+
+    $("btnRefresh").onclick = load;
+    load();
+    setInterval(load, 30000);
+  </script>
+</body>
+</html>
